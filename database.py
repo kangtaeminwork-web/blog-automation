@@ -1,14 +1,18 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
+import os
 
-DATABASE_URL = "sqlite:///./posts.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 
 def get_db():
     db = SessionLocal()
     try:
-        # yield 문법: 명령어 실행 후 끝내지 않고 다시 돌아옴
         yield db
     finally:
         db.close()
