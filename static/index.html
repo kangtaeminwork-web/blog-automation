@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>My Blog API</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; color: #333; }
+    header { background: #4f46e5; color: white; padding: 16px 32px; font-size: 20px; font-weight: bold; }
+    .container { max-width: 800px; margin: 40px auto; padding: 0 16px; }
+    .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    h2 { margin-bottom: 16px; font-size: 18px; color: #4f46e5; }
+    input, textarea { width: 100%; padding: 10px 14px; margin-bottom: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+    textarea { height: 100px; resize: vertical; }
+    button { background: #4f46e5; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+    button:hover { background: #4338ca; }
+    .msg { margin-top: 10px; font-size: 13px; color: #16a34a; }
+    .err { color: #dc2626; }
+    .post-item { border-bottom: 1px solid #eee; padding: 12px 0; }
+    .post-item:last-child { border-bottom: none; }
+    .post-title { font-weight: bold; margin-bottom: 4px; }
+    .post-content { font-size: 13px; color: #666; }
+    #auth-status { font-size: 13px; color: #6b7280; margin-bottom: 8px; }
+    .hidden { display: none; }
+    .tab-btns { display: flex; gap: 8px; margin-bottom: 20px; }
+    .tab-btn { background: #e0e7ff; color: #4f46e5; }
+    .tab-btn.active { background: #4f46e5; color: white; }
+  </style>
+</head>
+<body>
+  <header>📝 My Blog</header>
+  <div class="container">
+
+    <!-- 탭 버튼 -->
+    <div class="tab-btns">
+      <button class="tab-btn active" onclick="showTab('login')">로그인</button>
+      <button class="tab-btn" onclick="showTab('register')">회원가입</button>
+      <button class="tab-btn" onclick="showTab('posts')">포스트 목록</button>
+      <button class="tab-btn" id="write-tab-btn" onclick="showTab('write')">글 쓰기</button>
+    </div>
+
+    <!-- 로그인 -->
+    <div class="card" id="tab-login">
+      <h2>🔐 로그인</h2>
+      <div id="auth-status">로그인 안 됨</div>
+      <input id="login-user" placeholder="아이디" />
+      <input id="login-pass" placeholder="비밀번호" type="password" />
+      <button onclick="login()">로그인</button>
+      <button style="background:#dc2626;margin-left:8px" onclick="logout()">로그아웃</button>
+      <div class="msg" id="login-msg"></div>
+    </div>
+
+    <!-- 회원가입 -->
+    <div class="card hidden" id="tab-register">
+      <h2>✏️ 회원가입</h2>
+      <input id="reg-user" placeholder="아이디" />
+      <input id="reg-pass" placeholder="비밀번호" type="password" />
+      <input id="reg-email" placeholder="이메일" />
+      <button onclick="register()">가입하기</button>
+      <div class="msg" id="register-msg"></div>
+    </div>
+
+    <!-- 포스트 목록 -->
+    <div class="card hidden" id="tab-posts">
+      <h2>📋 포스트 목록</h2>
+      <button onclick="loadPosts()">새로고침</button>
+      <div id="post-list" style="margin-top:16px"></div>
+    </div>
+
+    <!-- 글 쓰기 -->
+    <div class="card hidden" id="tab-write">
+      <h2>🖊️ 새 포스트 작성</h2>
+      <input id="post-title" placeholder="제목" />
+      <textarea id="post-content" placeholder="내용"></textarea>
+      <button onclick="createPost()">게시하기</button>
+      <div class="msg" id="write-msg"></div>
+    </div>
+
+  </div>
+
+  <script>
+    const API = "https://blog-automation-ie6s.onrender.com";
+    let token = localStorage.getItem("token") || null;
+
+    function showTab(name) {
+      ["login","register","posts","write"].forEach(t => {
+        document.getElementById("tab-"+t).classList.add("hidden");
+        document.querySelectorAll(".tab-btn").forEach((b,i) => b.classList.remove("active"));
+      });
+      document.getElementById("tab-"+name).classList.remove("hidden");
+      const tabs = ["login","register","posts","write"];
+      document.querySelectorAll(".tab-btn")[tabs.indexOf(name)].classList.add("active");
+      if (name === "posts") loadPosts();
+      updateAuthStatus();
+    }
+
+    function updateAuthStatus() {
+      const el = document.getElementById("auth-status");
+      const user = localStorage.getItem("username");
+      el.textContent = token ? `✅ 로그인됨: ${user}` : "❌ 로그인 안 됨";
+    }
+
+    async function register() {
+      const u = document.getElementById("reg-user").value;
+      const p = document.getElementById("reg-pass").value;
+      const e = document.getElementById("reg-email").value;
+      const msg = document.getElementById("register-msg");
+      const res = await fetch(`${API}/register?username=${u}&password=${p}&email=${e}`, { method: "POST" });
+      const data = await res.json();
+      msg.className = res.ok ? "msg" : "msg err";
+      msg.textContent = res.ok ? "회원가입 완료! 로그인하세요." : (data.detail || "오류 발생");
+    }
+
+    async function login() {
+      const u = document.getElementById("login-user").value;
+      const p = document.getElementById("login-pass").value;
+      const msg = document.getElementById("login-msg");
+      const body = new URLSearchParams({ username: u, password: p });
+      const res = await fetch(`${API}/token`, { method: "POST", body });
+      const data = await res.json();
+      if (res.ok) {
+        token = data.access_token;
+        localStorage.setItem("token", token);
+        localStorage.setItem("username", u);
+        msg.className = "msg";
+        msg.textContent = "로그인 성공!";
+        updateAuthStatus();
+      } else {
+        msg.className = "msg err";
+        msg.textContent = data.detail || "로그인 실패";
+      }
+    }
+
+    function logout() {
+      token = null;
+      localStorage.removeItem("token");
+      localStorage.removeItem("username");
+      document.getElementById("login-msg").textContent = "로그아웃 됐습니다.";
+      updateAuthStatus();
+    }
+
+    async function loadPosts() {
+      const res = await fetch(`${API}/posts`);
+      const posts = await res.json();
+      const el = document.getElementById("post-list");
+      if (posts.length === 0) { el.textContent = "포스트가 없습니다."; return; }
+      el.innerHTML = posts.map(p => `
+        <div class="post-item">
+          <div class="post-title">${p.title}</div>
+          <div class="post-content">${p.content}</div>
+        </div>
+      `).join("");
+    }
+
+    async function createPost() {
+      if (!token) { alert("먼저 로그인하세요!"); return; }
+      const title = document.getElementById("post-title").value;
+      const content = document.getElementById("post-content").value;
+      const msg = document.getElementById("write-msg");
+      const res = await fetch(`${API}/posts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ title, content })
+      });
+      const data = await res.json();
+      msg.className = res.ok ? "msg" : "msg err";
+      msg.textContent = res.ok ? "포스트 작성 완료!" : (data.detail || "오류 발생");
+    }
+
+    updateAuthStatus();
+  </script>
+</body>
+</html>
