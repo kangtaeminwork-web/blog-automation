@@ -19,7 +19,17 @@
     .post-item { border-bottom: 1px solid #eee; padding: 12px 0; }
     .post-item:last-child { border-bottom: none; }
     .post-title { font-weight: bold; margin-bottom: 4px; }
-    .post-content { font-size: 13px; color: #666; }
+    .post-content { font-size: 13px; color: #666; margin-bottom: 8px; }
+    .post-actions { display: flex; gap: 8px; }
+    .btn-edit { background: #f59e0b; font-size: 12px; padding: 6px 12px; }
+    .btn-edit:hover { background: #d97706; }
+    .btn-delete { background: #dc2626; font-size: 12px; padding: 6px 12px; }
+    .btn-delete:hover { background: #b91c1c; }
+    .btn-save { background: #16a34a; font-size: 12px; padding: 6px 12px; }
+    .btn-save:hover { background: #15803d; }
+    .btn-cancel { background: #6b7280; font-size: 12px; padding: 6px 12px; }
+    .btn-cancel:hover { background: #4b5563; }
+    .edit-box input, .edit-box textarea { margin-bottom: 8px; }
     #auth-status { font-size: 13px; color: #6b7280; margin-bottom: 8px; }
     .hidden { display: none; }
     .tab-btns { display: flex; gap: 8px; margin-bottom: 20px; }
@@ -85,8 +95,8 @@
     function showTab(name) {
       ["login","register","posts","write"].forEach(t => {
         document.getElementById("tab-"+t).classList.add("hidden");
-        document.querySelectorAll(".tab-btn").forEach((b,i) => b.classList.remove("active"));
       });
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
       document.getElementById("tab-"+name).classList.remove("hidden");
       const tabs = ["login","register","posts","write"];
       document.querySelectorAll(".tab-btn")[tabs.indexOf(name)].classList.add("active");
@@ -144,12 +154,81 @@
       const posts = await res.json();
       const el = document.getElementById("post-list");
       if (posts.length === 0) { el.textContent = "포스트가 없습니다."; return; }
-      el.innerHTML = posts.map(p => `
-        <div class="post-item">
-          <div class="post-title">${p.title}</div>
-          <div class="post-content">${p.content}</div>
-        </div>
-      `).join("");
+
+      // 현재 로그인한 유저 정보 가져오기
+      let myUsername = null;
+      if (token) {
+        const meRes = await fetch(`${API}/me`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (meRes.ok) {
+          const me = await meRes.json();
+          myUsername = me.username;
+        }
+      }
+
+      el.innerHTML = posts.map(p => {
+        const isOwner = token && myUsername;
+        const actionBtns = isOwner ? `
+          <div class="post-actions">
+            <button class="btn-edit" onclick="startEdit(${p.id}, '${escapeAttr(p.title)}', '${escapeAttr(p.content)}')">✏️ 수정</button>
+            <button class="btn-delete" onclick="deletePost(${p.id})">🗑️ 삭제</button>
+          </div>` : "";
+
+        return `
+          <div class="post-item" id="post-${p.id}">
+            <div class="post-title" id="title-${p.id}">${p.title}</div>
+            <div class="post-content" id="content-${p.id}">${p.content}</div>
+            ${actionBtns}
+          </div>`;
+      }).join("");
+    }
+
+    function escapeAttr(str) {
+      return str.replace(/'/g, "\\'").replace(/\n/g, "\\n");
+    }
+
+    function startEdit(id, title, content) {
+      const item = document.getElementById(`post-${id}`);
+      item.innerHTML = `
+        <div class="edit-box">
+          <input id="edit-title-${id}" value="${title.replace(/\\n/g, '')}" />
+          <textarea id="edit-content-${id}">${content.replace(/\\n/g, '\n')}</textarea>
+          <div class="post-actions">
+            <button class="btn-save" onclick="savePost(${id})">💾 저장</button>
+            <button class="btn-cancel" onclick="loadPosts()">취소</button>
+          </div>
+        </div>`;
+    }
+
+    async function savePost(id) {
+      const title = document.getElementById(`edit-title-${id}`).value;
+      const content = document.getElementById(`edit-content-${id}`).value;
+      const res = await fetch(`${API}/posts/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ title, content })
+      });
+      if (res.ok) {
+        loadPosts();
+      } else {
+        const data = await res.json();
+        alert(data.detail || "수정 실패");
+      }
+    }
+
+    async function deletePost(id) {
+      if (!confirm("정말 삭제할까요?")) return;
+      const res = await fetch(`${API}/posts/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        loadPosts();
+      } else {
+        const data = await res.json();
+        alert(data.detail || "삭제 실패");
+      }
     }
 
     async function createPost() {
