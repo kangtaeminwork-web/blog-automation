@@ -13,12 +13,24 @@ class UserDB(Base):
     is_active = Column(Boolean, default=True)
 
     posts = relationship("PostDB", back_populates="author")
+    comments = relationship("CommentDB", back_populates="author")
 
 class PostDB(Base):
     __tablename__ = "posts"
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String)
     content = Column(String)
-    author_id = Column(Integer, ForeignKey("users.id")) #User테이블 id 참조
+    author_id = Column(Integer, ForeignKey("users.id"))
 
     author = relationship("UserDB", back_populates="posts")
+    comments = relationship("CommentDB", back_populates="post")
+
+class CommentDB(Base):
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(String)
+    author_id = Column(Integer, ForeignKey("users.id"))
+    post_id = Column(Integer, ForeignKey("posts.id"))
+
+    author = relationship("UserDB", back_populates="comments")
+    post = relationship("PostDB", back_populates="comments")

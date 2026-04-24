@@ -35,13 +35,20 @@
     .tab-btns { display: flex; gap: 8px; margin-bottom: 20px; }
     .tab-btn { background: #e0e7ff; color: #4f46e5; }
     .tab-btn.active { background: #4f46e5; color: white; }
+    .comment-section { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #eee; }
+    .comment-item { font-size: 13px; color: #555; padding: 6px 0; display: flex; justify-content: space-between; align-items: center; }
+    .comment-text { flex: 1; }
+    .btn-comment-delete { background: #dc2626; font-size: 11px; padding: 4px 8px; margin-left: 8px; }
+    .btn-comment-delete:hover { background: #b91c1c; }
+    .comment-input-wrap { display: flex; gap: 8px; margin-top: 8px; }
+    .comment-input-wrap input { margin-bottom: 0; flex: 1; }
+    .btn-comment-submit { font-size: 12px; padding: 10px 14px; white-space: nowrap; }
   </style>
 </head>
 <body>
   <header>📝 My Blog</header>
   <div class="container">
 
-    <!-- 탭 버튼 -->
     <div class="tab-btns">
       <button class="tab-btn active" onclick="showTab('login')">로그인</button>
       <button class="tab-btn" onclick="showTab('register')">회원가입</button>
@@ -49,7 +56,6 @@
       <button class="tab-btn" id="write-tab-btn" onclick="showTab('write')">글 쓰기</button>
     </div>
 
-    <!-- 로그인 -->
     <div class="card" id="tab-login">
       <h2>🔐 로그인</h2>
       <div id="auth-status">로그인 안 됨</div>
@@ -60,7 +66,6 @@
       <div class="msg" id="login-msg"></div>
     </div>
 
-    <!-- 회원가입 -->
     <div class="card hidden" id="tab-register">
       <h2>✏️ 회원가입</h2>
       <input id="reg-user" placeholder="아이디" />
@@ -70,14 +75,12 @@
       <div class="msg" id="register-msg"></div>
     </div>
 
-    <!-- 포스트 목록 -->
     <div class="card hidden" id="tab-posts">
       <h2>📋 포스트 목록</h2>
       <button onclick="loadPosts()">새로고침</button>
       <div id="post-list" style="margin-top:16px"></div>
     </div>
 
-    <!-- 글 쓰기 -->
     <div class="card hidden" id="tab-write">
       <h2>🖊️ 새 포스트 작성</h2>
       <input id="post-title" placeholder="제목" />
@@ -89,8 +92,9 @@
   </div>
 
   <script>
-    const API = "https://blog-automation-ie6s.onrender.com";
+    const API = "http://127.0.0.1:8000";
     let token = localStorage.getItem("token") || null;
+    let myUserId = null;
 
     function showTab(name) {
       ["login","register","posts","write"].forEach(t => {
@@ -135,14 +139,27 @@
         msg.className = "msg";
         msg.textContent = "로그인 성공!";
         updateAuthStatus();
+        await fetchMyUserId();
       } else {
         msg.className = "msg err";
         msg.textContent = data.detail || "로그인 실패";
       }
     }
 
+    async function fetchMyUserId() {
+      if (!token) return;
+      const res = await fetch(`${API}/me`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const me = await res.json();
+        myUserId = me.id;
+      }
+    }
+
     function logout() {
       token = null;
+      myUserId = null;
       localStorage.removeItem("token");
       localStorage.removeItem("username");
       document.getElementById("login-msg").textContent = "로그아웃 됐습니다.";
@@ -155,24 +172,19 @@
       const el = document.getElementById("post-list");
       if (posts.length === 0) { el.textContent = "포스트가 없습니다."; return; }
 
-      // 현재 로그인한 유저 정보 가져오기
-      let myUsername = null;
-      if (token) {
-        const meRes = await fetch(`${API}/me`, {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        if (meRes.ok) {
-          const me = await meRes.json();
-          myUsername = me.username;
-        }
-      }
+      if (token && !myUserId) await fetchMyUserId();
 
       el.innerHTML = posts.map(p => {
-        const isOwner = token && myUsername;
-        const actionBtns = isOwner ? `
+        const actionBtns = token ? `
           <div class="post-actions">
-            <button class="btn-edit" onclick="startEdit(${p.id}, '${escapeAttr(p.title)}', '${escapeAttr(p.content)}')">✏️ 수정</button>
-            <button class="btn-delete" onclick="deletePost(${p.id})">🗑️ 삭제</button>
+            <button class="btn-edit" data-id="${p.id}">✏️ 수정</button>
+            <button class="btn-delete" data-id="${p.id}">🗑️ 삭제</button>
+          </div>` : "";
+
+        const commentInput = token ? `
+          <div class="comment-input-wrap">
+            <input id="comment-input-${p.id}" placeholder="댓글을 입력하세요" />
+            <button class="btn-comment-submit" data-post-id="${p.id}">댓글 작성</button>
           </div>` : "";
 
         return `
@@ -180,25 +192,121 @@
             <div class="post-title" id="title-${p.id}">${p.title}</div>
             <div class="post-content" id="content-${p.id}">${p.content}</div>
             ${actionBtns}
+            <div class="comment-section">
+              <div id="comment-list-${p.id}"></div>
+              ${commentInput}
+            </div>
           </div>`;
       }).join("");
+
+      window._postsData = {};
+      posts.forEach(p => { window._postsData[p.id] = p; });
+
+      document.querySelectorAll(".btn-edit").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const p = window._postsData[btn.dataset.id];
+          startEdit(p.id, p.title, p.content);
+        });
+      });
+
+      document.querySelectorAll(".btn-delete").forEach(btn => {
+        btn.addEventListener("click", () => deletePost(btn.dataset.id));
+      });
+
+      document.querySelectorAll(".btn-comment-submit").forEach(btn => {
+        btn.addEventListener("click", () => createComment(btn.dataset.postId));
+      });
+
+      posts.forEach(p => loadComments(p.id));
     }
 
-    function escapeAttr(str) {
-      return str.replace(/'/g, "\\'").replace(/\n/g, "\\n");
+    async function loadComments(postId) {
+      const res = await fetch(`${API}/posts/${postId}/comments`);
+      const comments = await res.json();
+      const el = document.getElementById(`comment-list-${postId}`);
+      if (!el) return;
+      if (comments.length === 0) {
+        el.innerHTML = "<div style='font-size:12px;color:#aaa'>댓글이 없습니다.</div>";
+        return;
+      }
+      el.innerHTML = comments.map(c => {
+        const canDelete = token && myUserId && c.author_id === myUserId;
+        const deleteBtn = canDelete ? `<button class="btn-comment-delete" data-post-id="${postId}" data-comment-id="${c.id}">삭제</button>` : "";
+        return `<div class="comment-item"><span class="comment-text">💬 ${c.content}</span>${deleteBtn}</div>`;
+      }).join("");
+
+      el.querySelectorAll(".btn-comment-delete").forEach(btn => {
+        btn.addEventListener("click", () => deleteComment(btn.dataset.postId, btn.dataset.commentId));
+      });
+    }
+
+    async function createComment(postId) {
+      if (!token) { alert("먼저 로그인하세요!"); return; }
+      const input = document.getElementById(`comment-input-${postId}`);
+      const content = input.value;
+      if (!content) { alert("댓글 내용을 입력하세요!"); return; }
+      const res = await fetch(`${API}/posts/${postId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ content })
+      });
+      if (res.ok) {
+        input.value = "";
+        loadComments(postId);
+      } else {
+        const data = await res.json();
+        alert(data.detail || "댓글 작성 실패");
+      }
+    }
+
+    async function deleteComment(postId, commentId) {
+      if (!confirm("댓글을 삭제할까요?")) return;
+      const res = await fetch(`${API}/posts/${postId}/comments/${commentId}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        loadComments(postId);
+      } else {
+        const data = await res.json();
+        alert(data.detail || "삭제 실패");
+      }
     }
 
     function startEdit(id, title, content) {
       const item = document.getElementById(`post-${id}`);
-      item.innerHTML = `
-        <div class="edit-box">
-          <input id="edit-title-${id}" value="${title.replace(/\\n/g, '')}" />
-          <textarea id="edit-content-${id}">${content.replace(/\\n/g, '\n')}</textarea>
-          <div class="post-actions">
-            <button class="btn-save" onclick="savePost(${id})">💾 저장</button>
-            <button class="btn-cancel" onclick="loadPosts()">취소</button>
-          </div>
-        </div>`;
+
+      const titleInput = document.createElement("input");
+      titleInput.id = `edit-title-${id}`;
+      titleInput.value = title;
+
+      const contentArea = document.createElement("textarea");
+      contentArea.id = `edit-content-${id}`;
+      contentArea.textContent = content;
+
+      const saveBtn = document.createElement("button");
+      saveBtn.className = "btn-save";
+      saveBtn.textContent = "💾 저장";
+      saveBtn.addEventListener("click", () => savePost(id));
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "btn-cancel";
+      cancelBtn.textContent = "취소";
+      cancelBtn.addEventListener("click", loadPosts);
+
+      const actions = document.createElement("div");
+      actions.className = "post-actions";
+      actions.appendChild(saveBtn);
+      actions.appendChild(cancelBtn);
+
+      const box = document.createElement("div");
+      box.className = "edit-box";
+      box.appendChild(titleInput);
+      box.appendChild(contentArea);
+      box.appendChild(actions);
+
+      item.innerHTML = "";
+      item.appendChild(box);
     }
 
     async function savePost(id) {

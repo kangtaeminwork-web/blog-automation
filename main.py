@@ -5,9 +5,18 @@ from sqlalchemy.orm import Session
 from models import Base, UserDB
 from database import engine, get_db
 from auth import decode_token
-from routers import posts, auth
+from routers import posts, auth, comments
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -24,9 +33,10 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 app.include_router(auth.router)
 app.include_router(posts.router)
+app.include_router(comments.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/me")
 def get_me(current_user: UserDB = Depends(get_current_user)):
-    return {"username": current_user.username, "email": current_user.email}
+    return {"id": current_user.id, "username": current_user.username, "email": current_user.email}
